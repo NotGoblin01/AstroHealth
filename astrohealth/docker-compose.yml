@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # Primary High-Frequency Document Database
+  mongodb:
+    image: mongo:7.0
+    container_name: astrohealth-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: astrohealth_db
+    networks:
+      - astrohealth-net
+
+  # MQTT Broker for IoT Sensors & ESP32 Telemetry
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: astrohealth-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./hardware/mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - astrohealth-net
+
+  # AstroHealth Python FastAPI Backend & AI Engine
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: astrohealth-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017
+      - MONGODB_DATABASE=astrohealth_db
+      - MQTT_BROKER_HOST=mosquitto
+      - MQTT_BROKER_PORT=1883
+      - JWT_SECRET_KEY=ares-v-deep-space-flight-surgeon-secret-key-32b
+      - SIMULATION_MODE=True
+      - SIMULATION_INTERVAL_SECONDS=2
+      - OFFLINE_SQLITE_PATH=/app/astrohealth_offline_buffer.db
+    volumes:
+      - offline_data:/app
+    depends_on:
+      - mongodb
+      - mosquitto
+    networks:
+      - astrohealth-net
+
+  # Aerospace Web UI (React + TypeScript + Vite + Tailwind)
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: astrohealth-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - astrohealth-net
+
+volumes:
+  mongo_data:
+  offline_data:
+
+networks:
+  astrohealth-net:
+    driver: bridge
+
